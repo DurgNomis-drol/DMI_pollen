@@ -1,0 +1,9 @@
+{
+  "domain": "dmi_pollen",
+  "name": "DMI pollen",
+  "documentation": "https://github.com/DurgNomis-drol/DMI_pollen",
+  "dependencies": [],
+  "codeowners": ["@DurgNomis-drol"],
+  "requirements": ["requests","xmltodict"],
+  "version": "0.0.1"
+}
