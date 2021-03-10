@@ -31,31 +31,51 @@ JSON_READINGS = "readings"
 JSON_READING = "reading"
 
 SEVERITY = "severity"
-MANY = "Mange"
-FEW = "Få"
-FEW_THRESHOLD = 25
-NONE = "Ingen"
-NONE_THRESHOLD = 5
+NONE = "ingen"
+LOW = "få"
+MODERATE = "moderat"
+HIGH = "mange"
+
+LOW_THRESHOLD = {
+    'birk': 30,
+    'bynke': 10,
+    'elm': 10,
+    'el': 10,
+    'hassel': 5,
+    'græs': 10,
+    'alternaria': 20,
+    'cladosporium': 2000,
+}
+HIGH_THRESHOLD = {
+    'birk': 100,
+    'bynke': 50,
+    'elm': 50,
+    'el': 50,
+    'hassel': 15,
+    'græs': 50,
+    'alternaria': 100,
+    'cladosporium': 6000,
+}
 
 NO_READING = "-"
 SOURCE = "source"
 DATE = "applicable_date"
 
-NAME = "dmi_pollen"
+NAME = "DMI Pollen"
 ICON = "mdi:flower-poppy"
 
-# Time between updates (Default: 1 hour)
-SCAN_INTERVAL = timedelta(seconds=3600)
+# Time between updates (Default: 15 minutes)
+SCAN_INTERVAL = timedelta(seconds=600)
 
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
     """Set up the sensor platform."""
 
     data = DMIpollenApi()
-    data.get_data()
+    data.update()
 
     city_list = []
-    for city in data.data:
+    for city in data.readings:
         city_list.append(PollenSensor(data, city))
 
     add_devices(city_list, True)
@@ -73,12 +93,12 @@ class PollenSensor(Entity):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{NAME}_{self.city}"
+        return f"{NAME} {self.city.capitalize()}"
 
     @property
     def state(self):
         """Return the state of the sensor."""
-        return self.data.data[self.city][SEVERITY]
+        return self.data.readings[self.city][SEVERITY]
 
     @property
     def icon(self):
@@ -88,48 +108,49 @@ class PollenSensor(Entity):
     @property
     def device_state_attributes(self):
         """Return the state attributes."""
-        return self.data.data[self.city]
+        attributes = dict(self.data.readings[self.city])
+        attributes.update({JSON_FORECAST: self.data.forecasts[self.city]})
+        attributes.update(self.data.attrs)
+        return attributes
 
     def update(self):
         """Fetch new state data for the sensor.
 
         This is the only method that should fetch new data for Home Assistant.
         """
-        self.data.get_data()
+        self.data.update()
 
 
 class DMIpollenApi:
 
     def __init__(self):
-        self.data = {}
+        self.readings = {}
+        self.attrs = {}
+        self.forecasts = {}
 
     @staticmethod
-    def format_readings(raw):
-        readings = {}
-        all_values = 0
+    def calculate_severity(name, value):
 
-        for item in raw:
-            name = item.get(JSON_ATTRIBUTE_NAME).str.lower()
-            value = item.get(JSON_ATTRIBUTE_VALUE)
-            readings[name] = int(value) if value.isnumeric() else 0
+        if 0 < value < LOW_THRESHOLD[name]:
+            return LOW
+        elif LOW_THRESHOLD[name] < value < HIGH_THRESHOLD[name]:
+            return MODERATE
+        elif HIGH_THRESHOLD[name] < value:
+            return HIGH
+        else:
+            return NONE
 
-            all_values += int(value) if value.isnumeric() else 0
+    @staticmethod
+    def convert_xml_to_json(xml):
+        info_dict = xmltodict.parse(xml)
 
-        readings[SEVERITY] = MANY
+        json_string = json.dumps(info_dict)
 
-        if all_values < NONE_THRESHOLD:
-            readings[SEVERITY] = NONE
+        return json.loads(json_string)
 
-        if NONE_THRESHOLD < all_values < FEW_THRESHOLD:
-            readings[SEVERITY] = FEW
-
-        return readings
-
-    def get_data(self):
-
-        self.data = {}
-
-        response = requests.get(ENDPOINT)
+    @staticmethod
+    def request_new_data(endpoint):
+        response = requests.get(endpoint)
 
         if response.status_code != HTTP_OK:
             _LOGGER.error("Error fetching data. Status code: {code} with text: {text}".format(
@@ -138,21 +159,36 @@ class DMIpollenApi:
             ))
             return
 
-        json_string = json.dumps(xmltodict.parse(response.json()[0][JSON_PRODUCTS][JSON_XMLTEXT]))
+        return response.json()
 
-        data = json.loads(json_string)
+    def format_readings(self, raw_readings):
+        readings = {}
 
-        for city in data[JSON_POLLEN_INFO][JSON_REGION]:
-            readings = self.format_readings(city[JSON_READINGS][JSON_READING])
-            readings.update(
-                {
-                    JSON_FORECAST: city[JSON_FORECAST],
-                    DATE: data[JSON_POLLEN_INFO][JSON_FILE_INFO][JSON_DATE_DK][JSON_DATE_DK_STRING],
-                    SOURCE: data[JSON_POLLEN_INFO][JSON_SOURCE],
-                }
-            )
-            self.data.update(
-                {
-                    city[JSON_ATTRIBUTE_NAME]: readings
-                }
-            )
+        for item in raw_readings:
+            name = item.get(JSON_ATTRIBUTE_NAME).lower()
+            value = int(item.get(JSON_ATTRIBUTE_VALUE)) if item.get(JSON_ATTRIBUTE_VALUE).isnumeric() else 0
+            readings[name] = value
+
+        maximum = max(readings, key=readings.get)
+        readings[SEVERITY] = self.calculate_severity(maximum, readings[maximum])
+
+        return readings
+
+    def update(self):
+
+        self.readings = {}
+        self.attrs = {}
+        self.forecasts = {}
+
+        data = self.request_new_data(ENDPOINT)
+
+        result = self.convert_xml_to_json(data[0][JSON_PRODUCTS][JSON_XMLTEXT])
+
+        self.attrs = {
+            DATE: result[JSON_POLLEN_INFO][JSON_FILE_INFO][JSON_DATE_DK][JSON_DATE_DK_STRING],
+            SOURCE: result[JSON_POLLEN_INFO][JSON_SOURCE]
+        }
+
+        for city in result[JSON_POLLEN_INFO][JSON_REGION]:
+            self.readings[city[JSON_ATTRIBUTE_NAME]] = self.format_readings(city[JSON_READINGS][JSON_READING])
+            self.forecasts[city[JSON_ATTRIBUTE_NAME]] = city[JSON_FORECAST]
