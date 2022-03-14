@@ -152,7 +152,7 @@ class DMIpollenApi:
     def request_new_data(endpoint):
         response = requests.get(endpoint)
 
-        if response.status_code != HTTP_OK:
+        if response.status_code != 200:
             _LOGGER.error("Error fetching data. Status code: {code} with text: {text}".format(
                 code=response.status_code,
                 text=response
