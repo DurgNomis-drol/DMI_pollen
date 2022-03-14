@@ -2,7 +2,7 @@
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.helpers.entity import Entity
 import homeassistant.helpers.config_validation as cv
-from homeassistant.const import HTTP_OK, STATE_UNKNOWN, STATE_ON, STATE_OFF
+from homeassistant.const import STATE_UNKNOWN, STATE_ON, STATE_OFF
 import json
 import requests
 import xmltodict
