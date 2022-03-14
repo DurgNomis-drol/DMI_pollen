@@ -106,7 +106,7 @@ class PollenSensor(Entity):
         return ICON
 
     @property
-    def device_state_attributes(self):
+    def extra_state_attributes(self):
         """Return the state attributes."""
         attributes = dict(self.data.readings[self.city])
         attributes.update({JSON_FORECAST: self.data.forecasts[self.city]})
