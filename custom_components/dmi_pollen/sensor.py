@@ -2,13 +2,13 @@
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.helpers.entity import Entity
 import homeassistant.helpers.config_validation as cv
-from homeassistant.const import STATE_UNKNOWN, STATE_ON, STATE_OFF
 import json
 import requests
 import xmltodict
 import voluptuous as vol
 import logging
 from datetime import timedelta
+from http import HTTPStatus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class PollenSensor(Entity):
         return ICON
 
     @property
-    def extra_state_attributes(self):
+    def device_state_attributes(self):
         """Return the state attributes."""
         attributes = dict(self.data.readings[self.city])
         attributes.update({JSON_FORECAST: self.data.forecasts[self.city]})
@@ -152,7 +152,7 @@ class DMIpollenApi:
     def request_new_data(endpoint):
         response = requests.get(endpoint)
 
-        if response.status_code != 200:
+        if response.status_code != HTTPStatus.OK:
             _LOGGER.error("Error fetching data. Status code: {code} with text: {text}".format(
                 code=response.status_code,
                 text=response
