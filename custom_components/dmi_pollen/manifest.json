@@ -5,5 +5,5 @@
   "dependencies": [],
   "codeowners": ["@DurgNomis-drol"],
   "requirements": ["requests","xmltodict"],
-  "version": "0.0.1"
+  "version": "0.0.2"
 }
